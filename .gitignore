@@ -1,0 +1,13 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local Config
+.env
+
+# OS
+.DS_Store
