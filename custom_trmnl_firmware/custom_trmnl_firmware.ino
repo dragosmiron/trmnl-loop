@@ -62,7 +62,7 @@ void loadSettings();
 void saveSettings(String ssid, String pass, String server, String token);
 bool connectWiFi();
 bool fetchBatchFromProxy();
-void drawScreen(int index, bool force_full);
+void drawScreen(int index, bool is_reset, bool is_sync);
 void startCaptivePortal();
 void handleRoot();
 void handleSave();
@@ -93,7 +93,10 @@ void setup() {
   // Sync if we haven't synced yet, or if we have rotated through all downloaded screens
   bool needSync = (total_screens == 0 || wake_counter >= total_screens);
 
-  bool force_full_refresh = false;
+  // Check wakeup cause (force full refresh only on hardware restart/boot)
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool is_reset = (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED);
+  bool is_sync = false;
 
   if (needSync) {
     Serial.println("Sync Interval Reached. Booting Wi-Fi...");
@@ -102,7 +105,7 @@ void setup() {
         Serial.println("Batch sync successful!");
         wake_counter = 0;
         current_screen_idx = 0;
-        force_full_refresh = true;
+        is_sync = true;
       } else {
         Serial.println("Failed to fetch screens. Falling back to local rotation.");
       }
@@ -117,7 +120,7 @@ void setup() {
   // Draw the current screen from local LittleFS storage
   if (total_screens > 0) {
     Serial.printf("Drawing screen index: %d / %d\n", current_screen_idx, total_screens);
-    drawScreen(current_screen_idx, force_full_refresh);
+    drawScreen(current_screen_idx, is_reset, is_sync);
     
     // Increment rotation steps
     current_screen_idx = (current_screen_idx + 1) % total_screens;
@@ -257,7 +260,7 @@ bool fetchBatchFromProxy() {
   return false;
 }
 
-void drawScreen(int index, bool force_full) {
+void drawScreen(int index, bool is_reset, bool is_sync) {
   char path[16];
   sprintf(path, "/s%d.raw", index);
   File file = LittleFS.open(path, "r");
@@ -284,10 +287,10 @@ void drawScreen(int index, bool force_full) {
   // Set to true to invert colors if screen prints negative
   bbep.writePlane(PLANE_BOTH, false); 
 
-  // Choose refresh mode based on sync and cycle states
-  if (maximum_compatibility == 1 || force_full) {
+  // Choose refresh mode based on sync, boot, and cycle states
+  if (maximum_compatibility == 1 || is_reset) {
     bbep.refresh(REFRESH_FULL);
-  } else if (index == 0) {
+  } else if (is_sync || index == 0) {
     bbep.refresh(REFRESH_FAST);
   } else {
     bbep.refresh(REFRESH_PARTIAL);
