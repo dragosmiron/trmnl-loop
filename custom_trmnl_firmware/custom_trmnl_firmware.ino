@@ -34,6 +34,11 @@
 #define SCREEN_HEIGHT 480
 #define SCREEN_BUFFER_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 8) // Exactly 48,000 bytes
 
+// System Constants
+#define MAX_SCREENS 16
+#define WIFI_RETRY_LIMIT 25
+#define HTTP_TIMEOUT_MS 30000
+
 // E-paper class instance
 BBEPAPER bbep(EP75_800x480);
 
@@ -169,7 +174,7 @@ bool connectWiFi() {
   WiFi.begin(wifi_ssid.c_str(), wifi_pass.c_str());
   
   int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 25) {
+  while (WiFi.status() != WL_CONNECTED && retry < WIFI_RETRY_LIMIT) {
     delay(500);
     Serial.print(".");
     retry++;
@@ -182,7 +187,7 @@ bool fetchBatchFromProxy() {
   HTTPClient http;
   String fetchUrl = server_url + "/api/display";
   http.begin(fetchUrl);
-  http.setTimeout(30000); // 30 seconds timeout for batch processing
+  http.setTimeout(HTTP_TIMEOUT_MS); // Timeout for batch processing
   
   // Copy native headers to authenticate with the proxy
   http.addHeader("Access-Token", api_token);
@@ -203,7 +208,7 @@ bool fetchBatchFromProxy() {
     String specialFunc = http.header("X-Special-Function");
 
     if (batchCount > 0) {
-      total_screens = min(16, batchCount);
+      total_screens = min(MAX_SCREENS, batchCount);
       cycle_interval = newCycle;
       hard_refresh = newRefresh;
       maximum_compatibility = newCompat;
@@ -230,7 +235,7 @@ bool fetchBatchFromProxy() {
       // Stream the screens and write them to separate files in LittleFS
       for (int i = 0; i < total_screens; i++) {
         char path[16];
-        sprintf(path, "/s%d.raw", i);
+        snprintf(path, sizeof(path), "/s%d.raw", i);
         File file = LittleFS.open(path, "w");
         
         if (!file) {
@@ -262,7 +267,7 @@ bool fetchBatchFromProxy() {
 
 void drawScreen(int index, bool is_reset, bool is_sync) {
   char path[16];
-  sprintf(path, "/s%d.raw", index);
+  snprintf(path, sizeof(path), "/s%d.raw", index);
   File file = LittleFS.open(path, "r");
   if (!file) {
     Serial.printf("No screen file at: %s\n", path);
@@ -382,16 +387,7 @@ void handleSave() {
   server.send(200, "text/html", "<html><body><h3>Saving config & connecting...</h3><p>Checking registration. Keep an eye on Serial output.</p></body></html>");
   delay(1000);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid.c_str(), pass.c_str());
-  
-  int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 20) {
-    delay(500);
-    retry++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
+  if (connectWiFi()) {
     // WiFi connected successfully, now fetch Access-Token from the server
     HTTPClient http;
     String setupUrl = serverUrl + "/api/setup";
@@ -431,6 +427,6 @@ String getMacAddress() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   char macStr[18];
-  sprintf(macStr, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   return String(macStr);
 }
