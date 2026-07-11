@@ -11,6 +11,7 @@ TRMNL_BYOS_URL = os.getenv("TRMNL_BYOS_URL")
 if not TRMNL_BYOS_URL:
     raise RuntimeError("TRMNL_BYOS_URL environment variable is required but not set.")
 CYCLE_INTERVAL = int(os.getenv("CYCLE_INTERVAL", 300))  # Offline cycle rate in seconds (default 5m)
+REFRESH_PADDING = int(os.getenv("REFRESH_PADDING", 60))  # Buffer in seconds to prevent sync race conditions
 
 @app.route('/api/setup', methods=['GET', 'POST'])
 def setup_proxy():
@@ -118,7 +119,7 @@ def display_batch():
     response = Response(combined_binary, mimetype="application/octet-stream")
     response.headers['X-Batch-Count'] = str(len(raw_screens))
     response.headers['X-Cycle-Interval'] = str(CYCLE_INTERVAL)
-    response.headers['X-Hard-Refresh'] = str(hard_refresh)
+    response.headers['X-Hard-Refresh'] = str(hard_refresh + REFRESH_PADDING)
     response.headers['X-Max-Compatibility'] = "1" if maximum_compatibility else "0"
     response.headers['X-Frame-Size'] = str(frame_size) # Tell device exactly how many bytes per screen
     response.headers['X-Special-Function'] = first_json.get("special_function", "none")

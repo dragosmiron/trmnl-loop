@@ -16,18 +16,31 @@
 #define EPD_RST_PIN  10
 #define EPD_DC_PIN   5
 #define EPD_BUSY_PIN 4
-#else
-// Default: Screen pins matching the Seeed Studio TRMNL 7.5" OG DIY Kit
+#define BOOT_BUTTON_PIN 0 // Modify if official TRMNL uses a different pin
+
+#elif defined(BOARD_SEEED_XIAO_ESP32S3)
+// Screen pins matching the Seeed Studio TRMNL 7.5" OG DIY Kit
 #define EPD_SCK_PIN  7
 #define EPD_MOSI_PIN 9
 #define EPD_CS_PIN   44
 #define EPD_RST_PIN  38
 #define EPD_DC_PIN   10
 #define EPD_BUSY_PIN 4
-#endif
+#define BOOT_BUTTON_PIN 0     // Onboard BOOT button on the XIAO module
+#define EXPANSION_KEY1_PIN 2  // KEY1 on Seeed E-Paper expansion board (D1) - Previous Screen
+#define EXPANSION_KEY3_PIN 5  // KEY3 on Seeed E-Paper expansion board (D4) - Next Screen
 
-// Wakeup boot button (GPIO 0 is the BOOT button on the XIAO ESP32-S3)
+#else
+// Default: Custom Board (Replace with your own pins)
+// These default to the standard TRMNL OG pins but can be overridden
+#define EPD_SCK_PIN  7
+#define EPD_MOSI_PIN 8
+#define EPD_CS_PIN   6
+#define EPD_RST_PIN  10
+#define EPD_DC_PIN   5
+#define EPD_BUSY_PIN 4
 #define BOOT_BUTTON_PIN 0
+#endif
 
 // Screen dimensions
 #define SCREEN_WIDTH 800
@@ -67,7 +80,7 @@ void loadSettings();
 void saveSettings(String ssid, String pass, String server, String token);
 bool connectWiFi();
 bool fetchBatchFromProxy();
-void drawScreen(int index, bool is_reset, bool is_sync);
+void drawScreen(int index, bool is_reset, bool is_sync, bool is_manual);
 void startCaptivePortal();
 void handleRoot();
 void handleSave();
@@ -77,6 +90,12 @@ String getMacAddress();
 void setup() {
   Serial.begin(115200);
   pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+#if defined(EXPANSION_KEY1_PIN)
+  pinMode(EXPANSION_KEY1_PIN, INPUT_PULLUP);
+#endif
+#if defined(EXPANSION_KEY3_PIN)
+  pinMode(EXPANSION_KEY3_PIN, INPUT_PULLUP);
+#endif
   
   // Initialize file system
   if (!LittleFS.begin(true)) {
@@ -94,14 +113,49 @@ void setup() {
     return;
   }
 
-  // Calculate sync condition
-  // Sync if we haven't synced yet, or if we have rotated through all downloaded screens
-  bool needSync = (total_screens == 0 || wake_counter >= total_screens);
-
-  // Check wakeup cause (force full refresh only on hardware restart/boot)
+  // Check wakeup cause
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   bool is_reset = (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED);
   bool is_sync = false;
+  bool is_manual = false;
+
+  // Detect if manual cycle buttons woke the device
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1 && total_screens > 0) {
+    uint64_t pin_mask = esp_sleep_get_ext1_wakeup_status();
+    bool prev_pressed = false;
+    bool next_pressed = false;
+
+#if defined(EXPANSION_KEY1_PIN)
+    prev_pressed = (pin_mask & (1ULL << EXPANSION_KEY1_PIN)) || (digitalRead(EXPANSION_KEY1_PIN) == LOW);
+#endif
+#if defined(EXPANSION_KEY3_PIN)
+    next_pressed = (pin_mask & (1ULL << EXPANSION_KEY3_PIN)) || (digitalRead(EXPANSION_KEY3_PIN) == LOW);
+#endif
+
+    if (prev_pressed) {
+      Serial.println("Wakeup caused by KEY1 (Previous Screen)");
+      // Move pointer back: (current_screen_idx - 2) because it was already pointing to the next scheduled screen
+      current_screen_idx = (current_screen_idx - 2 + total_screens) % total_screens;
+      is_manual = true;
+    } else if (next_pressed) {
+      Serial.println("Wakeup caused by KEY3 (Next Screen)");
+      // Already pointing to next scheduled screen, no change needed
+      is_manual = true;
+    }
+  }
+
+  // Calculate sync condition
+  // Sync if we haven't synced yet, or if the time passed exceeds the hard refresh interval.
+  // Bypass sync if we woke up manually to cycle screens.
+  bool needSync = false;
+  if (total_screens == 0) {
+    needSync = true;
+  } else if (!is_manual) {
+    int time_passed = wake_counter * cycle_interval;
+    if (time_passed >= hard_refresh) {
+      needSync = true;
+    }
+  }
 
   if (needSync) {
     Serial.println("Sync Interval Reached. Booting Wi-Fi...");
@@ -124,12 +178,14 @@ void setup() {
 
   // Draw the current screen from local LittleFS storage
   if (total_screens > 0) {
-    Serial.printf("Drawing screen index: %d / %d\n", current_screen_idx, total_screens);
-    drawScreen(current_screen_idx, is_reset, is_sync);
+    Serial.printf("Drawing screen index: %d / %d (Manual: %d)\n", current_screen_idx, total_screens, is_manual);
+    drawScreen(current_screen_idx, is_reset, is_sync, is_manual);
     
     // Increment rotation steps
     current_screen_idx = (current_screen_idx + 1) % total_screens;
-    wake_counter++;
+    if (!is_manual) {
+      wake_counter++;
+    }
   } else {
     Serial.println("No screens cached to display!");
   }
@@ -137,6 +193,13 @@ void setup() {
   // Go back to Deep Sleep for the cycle interval
   Serial.printf("Going to sleep for %d seconds...\n", cycle_interval);
   esp_sleep_enable_timer_wakeup(cycle_interval * 1000000ULL);
+
+  // Enable waking up from key presses during sleep
+#if defined(EXPANSION_KEY1_PIN) && defined(EXPANSION_KEY3_PIN)
+  uint64_t ext1_mask = (1ULL << EXPANSION_KEY1_PIN) | (1ULL << EXPANSION_KEY3_PIN);
+  esp_sleep_enable_ext1_wakeup(ext1_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+#endif
+
   esp_deep_sleep_start();
 }
 
@@ -265,7 +328,7 @@ bool fetchBatchFromProxy() {
   return false;
 }
 
-void drawScreen(int index, bool is_reset, bool is_sync) {
+void drawScreen(int index, bool is_reset, bool is_sync, bool is_manual) {
   char path[16];
   snprintf(path, sizeof(path), "/s%d.raw", index);
   File file = LittleFS.open(path, "r");
@@ -292,13 +355,11 @@ void drawScreen(int index, bool is_reset, bool is_sync) {
   // Set to true to invert colors if screen prints negative
   bbep.writePlane(PLANE_BOTH, false); 
 
-  // Choose refresh mode based on sync, boot, and cycle states
+  // Choose refresh mode based on sync, boot, cycle, and manual states
   if (maximum_compatibility == 1 || is_reset) {
     bbep.refresh(REFRESH_FULL);
-  } else if (is_sync || index == 0) {
-    bbep.refresh(REFRESH_FAST);
   } else {
-    bbep.refresh(REFRESH_PARTIAL);
+    bbep.refresh(REFRESH_FAST);
   }
 
   free(buffer);
