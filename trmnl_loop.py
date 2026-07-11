@@ -3,6 +3,13 @@ import io
 import requests
 from flask import Flask, request, Response, jsonify, send_file
 from PIL import Image
+from datetime import datetime
+import builtins
+
+# Override print to automatically include local timestamps
+def print(*args, **kwargs):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    builtins.print(f"[{timestamp}]", *args, flush=True, **kwargs)
 
 app = Flask(__name__)
 
