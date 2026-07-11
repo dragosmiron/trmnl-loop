@@ -6,12 +6,26 @@ from PIL import Image
 
 app = Flask(__name__)
 
-# Server Configurations from environment variables
-TRMNL_BYOS_URL = os.getenv("TRMNL_BYOS_URL")
-if not TRMNL_BYOS_URL:
-    raise RuntimeError("TRMNL_BYOS_URL environment variable is required but not set.")
-CYCLE_INTERVAL = int(os.getenv("CYCLE_INTERVAL", 300))  # Offline cycle rate in seconds (default 5m)
-REFRESH_PADDING = int(os.getenv("REFRESH_PADDING", 60))  # Buffer in seconds to prevent sync race conditions
+# Server Configurations from config.json (Loaded dynamically)
+import json
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_config_cache = {}
+_config_mtime = 0
+
+def get_config():
+    global _config_cache, _config_mtime
+    try:
+        if os.path.exists(CONFIG_PATH):
+            mtime = os.path.getmtime(CONFIG_PATH)
+            if mtime > _config_mtime:
+                with open(CONFIG_PATH, "r") as f:
+                    _config_cache = json.load(f)
+                _config_mtime = mtime
+                print("[Proxy] Configuration reloaded dynamically from config.json")
+    except Exception as e:
+        print(f"[Warning] Failed to read/parse config.json: {e}")
+    return _config_cache
 
 @app.route('/api/setup', methods=['GET', 'POST'])
 def setup_proxy():
@@ -19,8 +33,13 @@ def setup_proxy():
     Transparently forward setup/registration requests to the TRMNL BYOS server.
     This ensures native auto-join and setup flows still work perfectly.
     """
+    config = get_config()
+    byos_url = config.get("TRMNL_BYOS_URL")
+    if not byos_url:
+        return jsonify({"error": "TRMNL_BYOS_URL is not configured in config.json"}), 500
+
     headers = {key: value for key, value in request.headers if key.lower() not in ['host']}
-    url = f"{TRMNL_BYOS_URL}/api/setup"
+    url = f"{byos_url}/api/setup"
     
     try:
         if request.method == 'POST':
@@ -38,9 +57,16 @@ def display_batch():
     Performs multiple sequential queries to the BYOS server to fetch next screens in playlist,
     converts them to 1-bit raw bytes, and serves them to the device.
     """
+    config = get_config()
+    byos_url = config.get("TRMNL_BYOS_URL")
+    if not byos_url:
+        return jsonify({"error": "TRMNL_BYOS_URL is not configured in config.json"}), 500
+    cycle_interval = int(config.get("CYCLE_INTERVAL", 300))
+    refresh_padding = int(config.get("REFRESH_PADDING", 60))
+
     # Forward original headers (Access-Token, MAC Address, RSSI, Battery etc.)
     headers = {key: value for key, value in request.headers if key.lower() not in ['host']}
-    url = f"{TRMNL_BYOS_URL}/api/display"
+    url = f"{byos_url}/api/display"
     
     # 1. Query BYOS server for the first screen to read metadata
     try:
@@ -56,8 +82,8 @@ def display_batch():
 
     # Calculate required number of screens and cap it to prevent filesystem overflow
     MAX_BATCH_LIMIT = 16
-    num_screens = min(MAX_BATCH_LIMIT, max(1, hard_refresh // CYCLE_INTERVAL))
-    print(f"[Proxy] Hard Refresh: {hard_refresh}s | Local Cycle: {CYCLE_INTERVAL}s | Fetching up to {num_screens} screens.")
+    num_screens = min(MAX_BATCH_LIMIT, max(1, hard_refresh // cycle_interval))
+    print(f"[Proxy] Hard Refresh: {hard_refresh}s | Local Cycle: {cycle_interval}s | Fetching up to {num_screens} screens.")
 
     raw_screens = []
     seen_hashes = set()
@@ -118,8 +144,8 @@ def display_batch():
     # 4. Return binary stream along with control headers for the ESP32
     response = Response(combined_binary, mimetype="application/octet-stream")
     response.headers['X-Batch-Count'] = str(len(raw_screens))
-    response.headers['X-Cycle-Interval'] = str(CYCLE_INTERVAL)
-    response.headers['X-Hard-Refresh'] = str(hard_refresh + REFRESH_PADDING)
+    response.headers['X-Cycle-Interval'] = str(cycle_interval)
+    response.headers['X-Hard-Refresh'] = str(hard_refresh + refresh_padding)
     response.headers['X-Max-Compatibility'] = "1" if maximum_compatibility else "0"
     response.headers['X-Frame-Size'] = str(frame_size) # Tell device exactly how many bytes per screen
     response.headers['X-Special-Function'] = first_json.get("special_function", "none")

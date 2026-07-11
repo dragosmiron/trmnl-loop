@@ -8,6 +8,7 @@ __pycache__/
 
 # Local Config
 .env
+config.json
 
 # OS
 .DS_Store

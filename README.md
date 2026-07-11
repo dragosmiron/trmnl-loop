@@ -22,17 +22,22 @@ The proxy runs as a lightweight Docker service on your Linux server.
 ### 1. Set Up the Project Directory
 Copy the project files (`trmnl_loop.py`, `Dockerfile`, and `docker-compose.yml`) to a folder on your server (e.g., `/opt/trmnl-loop`).
 
-### 2. Configure Environment Variables
-Create a file named `.env` in the directory:
+### 2. Configure Settings
+Create a configuration file by copying the example:
 ```bash
-nano .env
+cp config.json.example config.json
+nano config.json
 ```
 
-Add the following content (adjust to match your TRMNL server URL and desired cycle interval):
-```env
-TRMNL_BYOS_URL=http://192.168.1.100:4567  # Your LaraPaper/Terminus address
-CYCLE_INTERVAL=300                        # Seconds between offline screen swaps (5 mins)
+Add your configuration details (adjust to match your TRMNL server URL and desired cycle interval):
+```json
+{
+  "TRMNL_BYOS_URL": "http://192.168.1.100:4567",
+  "CYCLE_INTERVAL": 300,
+  "REFRESH_PADDING": 60
+}
 ```
+*Note: Any changes made to `config.json` on the host will be dynamically reloaded by the proxy server immediately, without needing to restart the container!*
 
 ### 3. Start the Proxy Container
 Run the following command to build and launch the container:
