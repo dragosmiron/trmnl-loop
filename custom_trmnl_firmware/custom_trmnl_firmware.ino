@@ -285,7 +285,7 @@ void drawScreen(int index) {
   if (maximum_compatibility == 1 || index == 0) {
     bbep.refresh(REFRESH_FULL);
   } else {
-    bbep.refresh(REFRESH_FAST);
+    bbep.refresh(REFRESH_PARTIAL);
   }
 
   free(buffer);
