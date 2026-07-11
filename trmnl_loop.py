@@ -3,13 +3,15 @@ import io
 import requests
 from flask import Flask, request, Response, jsonify, send_file
 from PIL import Image
-from datetime import datetime
-import builtins
+import logging
 
-# Override print to automatically include local timestamps
-def print(*args, **kwargs):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    builtins.print(f"[{timestamp}]", *args, flush=True, **kwargs)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("trmnl-loop")
 
 app = Flask(__name__)
 
@@ -29,9 +31,9 @@ def get_config():
                 with open(CONFIG_PATH, "r") as f:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
-                print("[Proxy] Configuration reloaded dynamically from config.json")
+                logger.info("Configuration reloaded dynamically from config.json")
     except Exception as e:
-        print(f"[Warning] Failed to read/parse config.json: {e}")
+        logger.warning(f"Failed to read/parse config.json: {e}")
     return _config_cache
 
 @app.route('/api/setup', methods=['GET', 'POST'])
@@ -90,7 +92,7 @@ def display_batch():
     # Calculate required number of screens and cap it to prevent filesystem overflow
     MAX_BATCH_LIMIT = 16
     num_screens = min(MAX_BATCH_LIMIT, max(1, hard_refresh // cycle_interval))
-    print(f"[Proxy] Hard Refresh: {hard_refresh}s | Local Cycle: {cycle_interval}s | Fetching up to {num_screens} screens.")
+    logger.info(f"Hard Refresh: {hard_refresh}s | Local Cycle: {cycle_interval}s | Fetching up to {num_screens} screens.")
 
     raw_screens = []
     seen_hashes = set()
@@ -104,15 +106,15 @@ def display_batch():
     # 2. Download and convert the first screen image
     try:
         first_image_url = first_json.get("image_url")
-        print(f"[Proxy] Screen 0 JSON: {first_json}")
+        logger.info(f"Screen 0 JSON: {first_json}")
         if first_image_url:
             first_raw = download_and_convert_image(first_image_url, img_format, width, height)
             first_hash = hashlib.sha256(first_raw).hexdigest()
-            print(f"[Proxy] Screen 0 hash: {first_hash} | URL: {first_image_url}")
+            logger.info(f"Screen 0 hash: {first_hash} | URL: {first_image_url}")
             seen_hashes.add(first_hash)
             raw_screens.append(first_raw)
     except Exception as e:
-        print(f"[Error] Failed to process first screen: {e}")
+        logger.error(f"Failed to process first screen: {e}")
 
     # 3. Sequentially query remaining screens in the playlist
     for i in range(1, num_screens):
@@ -122,21 +124,21 @@ def display_batch():
             resp = requests.get(f"{url}?step={i}", headers=headers, timeout=10)
             if resp.status_code == 200:
                 js = resp.json()
-                print(f"[Proxy] Screen {i} JSON: {js}")
+                logger.info(f"Screen {i} JSON: {js}")
                 img_url = js.get("image_url")
                 if img_url:
                     raw_data = download_and_convert_image(img_url, img_format, width, height)
                     img_hash = hashlib.sha256(raw_data).hexdigest()
-                    print(f"[Proxy] Screen {i} hash: {img_hash} | URL: {img_url}")
+                    logger.info(f"Screen {i} hash: {img_hash} | URL: {img_url}")
                     if img_hash in seen_hashes:
-                        print(f"[Proxy] Duplicate screen detected (playlist looped). Stopping fetch at {len(raw_screens)} unique screens.")
+                        logger.info(f"Duplicate screen detected (playlist looped). Stopping fetch at {len(raw_screens)} unique screens.")
                         break
                     seen_hashes.add(img_hash)
                     raw_screens.append(raw_data)
             else:
-                print(f"[Warning] BYOS server returned status {resp.status_code} for screen {i}")
+                logger.warning(f"BYOS server returned status {resp.status_code} for screen {i}")
         except Exception as e:
-            print(f"[Error] Failed to process screen {i}: {e}")
+            logger.error(f"Failed to process screen {i}: {e}")
 
     # Ensure we got at least one valid screen
     if not raw_screens:
@@ -157,7 +159,7 @@ def display_batch():
     response.headers['X-Frame-Size'] = str(frame_size) # Tell device exactly how many bytes per screen
     response.headers['X-Special-Function'] = first_json.get("special_function", "none")
     
-    print(f"[Proxy] Dispatched {len(raw_screens)} screens ({len(combined_binary)} bytes) in '{img_format}' ({width}x{height}) format (Frame Size: {frame_size} bytes).")
+    logger.info(f"Dispatched {len(raw_screens)} screens ({len(combined_binary)} bytes) in '{img_format}' ({width}x{height}) format (Frame Size: {frame_size} bytes).")
     return response
 
 def download_and_convert_image(url, img_format="1bit", width=800, height=480):
@@ -173,7 +175,7 @@ def download_and_convert_image(url, img_format="1bit", width=800, height=480):
         
     img = Image.open(io.BytesIO(resp.content))
     if img.size != (width, height):
-        print(f"[Warning] Resizing image from {img.size} to ({width}, {height})")
+        logger.warning(f"Resizing image from {img.size} to ({width}, {height})")
         img = img.resize((width, height))
 
     # Calculate buffer size for one bit-plane (1 bit per pixel)
