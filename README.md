@@ -56,7 +56,7 @@ You can flash the Seeed Studio board using either your browser (via Docker compi
 ---
 
 ### Option 1: PlatformIO (Docker Build & Browser Flash)
-This is the recommended workflow. It performs compilation inside a PlatformIO container and serves the raw partition files for browser flashing.
+This is the recommended workflow. It performs compilation inside a PlatformIO container and serves the merged firmware binary for browser flashing.
 
 #### 1. Compile the Binaries
 Always clean your target's build cache before compilation to ensure changes are applied:
@@ -68,13 +68,10 @@ docker run --rm -v $(pwd):/workspace -w /workspace takigama/platformio platformi
 docker run --rm -v $(pwd):/workspace -w /workspace takigama/platformio platformio run -e seeed_xiao_esp32s3
 ```
 
-#### 2. Download the Partition Files
-Open your terminal on your local machine and download the 4 compiled components from the proxy container:
+#### 2. Download the Firmware Binary
+Open your terminal on your local machine and download the generated firmware from the proxy container:
 ```bash
-curl -H "Cache-Control: no-cache" -o ~/Downloads/trmnl_bootloader.bin http://<server_ip>:5000/bootloader.bin
-curl -H "Cache-Control: no-cache" -o ~/Downloads/trmnl_partitions.bin http://<server_ip>:5000/partitions.bin
-curl -H "Cache-Control: no-cache" -o ~/Downloads/trmnl_boot_app0.bin http://<server_ip>:5000/boot_app0.bin
-curl -H "Cache-Control: no-cache" -o ~/Downloads/trmnl_app.bin http://<server_ip>:5000/app.bin
+curl -H "Cache-Control: no-cache" -o ~/Downloads/firmware.bin http://<server_ip>:5000/firmware.bin
 ```
 
 #### 3. Program via Web Flasher
@@ -82,11 +79,8 @@ curl -H "Cache-Control: no-cache" -o ~/Downloads/trmnl_app.bin http://<server_ip
 2. Put the board in **bootloader mode**: Hold the **BOOT** button ("B"), click the **RESET** button ("R") once, then release **BOOT**.
 3. Open Google Chrome or Microsoft Edge and go to: **[espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/)**.
 4. Click **Connect**, select the serial port corresponding to your board, and click **Erase Flash** (wipes the chip clean).
-5. Click the **`+` (Add File)** button to configure **4 rows** in the flasher:
-   *   **Row 1:** File: `trmnl_bootloader.bin` | Address: **`0x0`**
-   *   **Row 2:** File: `trmnl_partitions.bin` | Address: **`0x8000`**
-   *   **Row 3:** File: `trmnl_boot_app0.bin` | Address: **`0xe000`**
-   *   **Row 4:** File: `trmnl_app.bin` | Address: **`0x10000`**
+5. Click the **`+` (Add File)** button to configure **1 row** in the flasher:
+   *   **Row 1:** File: `firmware.bin` | Address: **`0x0`**
 6. Ensure Flash settings are set to `keep` (mode, speed, size) and click **Program**.
 
 ---
