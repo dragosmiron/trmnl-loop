@@ -300,6 +300,7 @@ void drawScreen(int index, bool is_reset, bool is_sync) {
 }
 
 void startCaptivePortal() {
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP("TRMNL-Batch-Setup");
   dnsServer.start(53, "*", WiFi.softAPIP());
   
@@ -313,18 +314,55 @@ void startCaptivePortal() {
 }
 
 void handleRoot() {
-  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>";
-  html += "body { font-family: sans-serif; padding: 20px; }";
-  html += "input, button { display: block; width: 100%; margin: 10px 0; padding: 12px; font-size: 16px; box-sizing: border-box; }";
-  html += "button { background: #000; color: #fff; border: none; font-weight: bold; }";
-  html += "</style></head><body>";
-  html += "<h2>TRMNL Batch Sync Setup</h2>";
-  html += "<form action='/save' method='post'>";
-  html += "<input type='text' name='ssid' placeholder='WiFi SSID' value='" + wifi_ssid + "' required>";
-  html += "<input type='password' name='pass' placeholder='WiFi Password' value='" + wifi_pass + "'>";
-  html += "<input type='url' name='server' placeholder='Proxy URL (e.g. http://192.168.1.100:5000)' value='" + server_url + "' required>";
-  html += "<button type='submit'>Save Configuration</button>";
-  html += "</form></body></html>";
+  int n = WiFi.scanNetworks();
+  
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f9f9f9; color: #333; }
+    .card { max-width: 400px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { margin-top: 0; text-align: center; }
+    input, button { display: block; width: 100%; margin: 15px 0; padding: 12px; font-size: 16px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    button { background: #000; color: #fff; border: none; font-weight: bold; cursor: pointer; }
+    button:hover { background: #333; }
+  </style>
+</head>
+<body>
+  <div class='card'>
+    <h2>TRMNL Device Setup</h2>
+    <form action='/save' method='post'>
+      <label><b>WiFi Network</b></label>
+      <input type='text' name='ssid' list='networks' placeholder='Select or type SSID' value=')rawliteral";
+  
+  html += wifi_ssid;
+  html += R"rawliteral(' required>
+      <datalist id='networks'>
+)rawliteral";
+
+  for (int i = 0; i < n; ++i) {
+    html += "<option value='" + WiFi.SSID(i) + "'>";
+  }
+
+  html += R"rawliteral(
+      </datalist>
+      <label><b>WiFi Password</b></label>
+      <input type='password' name='pass' placeholder='Password (leave blank if open)' value=')rawliteral";
+  html += wifi_pass;
+  html += R"rawliteral('>
+      <label><b>Proxy Server URL</b></label>
+      <input type='url' name='server' placeholder='e.g. http://192.168.1.100:5000' value=')rawliteral";
+  html += server_url;
+  html += R"rawliteral(' required>
+      <button type='submit'>Save & Connect</button>
+    </form>
+  </div>
+</body>
+</html>
+)rawliteral";
+
   server.send(200, "text/html", html);
 }
 
