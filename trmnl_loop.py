@@ -100,8 +100,21 @@ def display_batch():
     
     # Read requested format and dimensions from query parameters
     img_format = request.args.get("format", "1bit").lower()
-    width = int(request.args.get("width", 800))
-    height = int(request.args.get("height", 480))
+    if img_format not in ["1bit", "3color", "4gray"]:
+        logger.warning(f"Unknown image format requested: '{img_format}'. Defaulting to '1bit'.")
+        img_format = "1bit"
+
+    try:
+        width = int(request.args.get("width", 800))
+    except ValueError:
+        logger.warning("Invalid width query parameter. Defaulting to 800.")
+        width = 800
+
+    try:
+        height = int(request.args.get("height", 480))
+    except ValueError:
+        logger.warning("Invalid height query parameter. Defaulting to 480.")
+        height = 480
     
     # 2. Download and convert the first screen image
     try:
@@ -174,6 +187,13 @@ def download_and_convert_image(url, img_format="1bit", width=800, height=480):
         raise Exception(f"HTTP {resp.status_code} when downloading image")
         
     img = Image.open(io.BytesIO(resp.content))
+    # Paste transparent images onto white background to avoid black-on-black conversion artifacts
+    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+        rgba_img = img.convert("RGBA")
+        background = Image.new("RGB", rgba_img.size, (255, 255, 255))
+        background.paste(rgba_img, mask=rgba_img.split()[3])
+        img = background
+
     if img.size != (width, height):
         logger.warning(f"Resizing image from {img.size} to ({width}, {height})")
         img = img.resize((width, height))

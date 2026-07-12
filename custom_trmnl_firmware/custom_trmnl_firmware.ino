@@ -105,6 +105,21 @@ void setup() {
 
   loadSettings();
 
+  // If woke up by a button press but there's only 1 or 0 screens, go back to sleep immediately to save power
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 && total_screens <= 1) {
+    Serial.println("Woke up by button but 1 or fewer screens cached. Sleeping immediately.");
+    int sleep_time = hard_refresh - (wake_counter * cycle_interval);
+    if (sleep_time <= 0) {
+      sleep_time = hard_refresh;
+    }
+    esp_sleep_enable_timer_wakeup(sleep_time * 1000000ULL);
+#if defined(EXPANSION_KEY1_PIN) && defined(EXPANSION_KEY3_PIN)
+    uint64_t ext1_mask = (1ULL << EXPANSION_KEY1_PIN) | (1ULL << EXPANSION_KEY3_PIN);
+    esp_sleep_enable_ext1_wakeup(ext1_mask, ESP_EXT1_WAKEUP_ANY_LOW);
+#endif
+    esp_deep_sleep_start();
+  }
+
   // Trigger setup portal if button is pressed or if no WiFi details are saved
   bool forcePortal = (digitalRead(BOOT_BUTTON_PIN) == LOW);
   if (forcePortal || wifi_ssid.length() == 0) {
@@ -190,9 +205,22 @@ void setup() {
     Serial.println("No screens cached to display!");
   }
 
-  // Go back to Deep Sleep for the cycle interval
-  Serial.printf("Going to sleep for %d seconds...\n", cycle_interval);
-  esp_sleep_enable_timer_wakeup(cycle_interval * 1000000ULL);
+  // Go back to Deep Sleep
+  if (total_screens == 1 && !is_manual) {
+    // If only 1 screen is cached, sleep for the remaining duration of the hard refresh window
+    int sleep_time = hard_refresh - (wake_counter * cycle_interval);
+    if (sleep_time <= 0) {
+      sleep_time = hard_refresh;
+    }
+    Serial.printf("Single screen cached. Sleeping for remaining sync window: %d seconds...\n", sleep_time);
+    esp_sleep_enable_timer_wakeup(sleep_time * 1000000ULL);
+    
+    // Set wake_counter so that needSync evaluates to true on the next natural wakeup
+    wake_counter = (hard_refresh / cycle_interval) + 1;
+  } else {
+    Serial.printf("Going to sleep for %d seconds...\n", cycle_interval);
+    esp_sleep_enable_timer_wakeup(cycle_interval * 1000000ULL);
+  }
 
   // Enable waking up from key presses during sleep
 #if defined(EXPANSION_KEY1_PIN) && defined(EXPANSION_KEY3_PIN)
@@ -323,7 +351,19 @@ bool fetchBatchFromProxy() {
     }
   }
   
+  String payload = http.getString();
   Serial.printf("HTTP request failed, code: %d\n", httpCode);
+
+  if (httpCode == 401 || httpCode == 404 || 
+      (httpCode == 500 && payload.indexOf("Device not found") >= 0) || 
+      payload.indexOf("\"reset_firmware\": true") >= 0) {
+    Serial.println("Device disassociated from server. Wiping credentials and restarting...");
+    saveSettings("", "", "", ""); // Clear SSID/Token
+    http.end();
+    delay(1000);
+    ESP.restart();
+  }
+  
   http.end();
   return false;
 }

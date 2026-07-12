@@ -2,7 +2,7 @@
 
 🔮 *Proudly vibe-coded with the assistance of Antigravity, Google DeepMind's coding agent.*
 
-This repository contains the custom firmware and Docker proxy service to enable **dynamic offline e-ink slideshow caching** on your Seeed Studio TRMNL DIY Kit. 
+This repository contains the custom firmware and Docker proxy service to enable **dynamic offline e-ink slideshow caching** on your TRMNL e-ink display (such as the Seeed Studio TRMNL DIY Kit, the official TRMNL board, or other compatible custom setups). 
 
 With this setup, your device only wakes up its Wi-Fi radio periodically to fetch the latest screens from your self-hosted TRMNL server (e.g. LaraPaper or Terminus). Once downloaded, it stores the screens locally in its flash memory, shuts off the Wi-Fi radio, and loops through them offline. This saves approximately **70% to 80% of battery consumption**.
 
@@ -37,6 +37,10 @@ Add your configuration details (adjust to match your TRMNL server URL and desire
   "REFRESH_PADDING": 60
 }
 ```
+*   **`TRMNL_BYOS_URL`**: The base URL of your self-hosted TRMNL backend (e.g. LaraPaper or Terminus instance).
+*   **`CYCLE_INTERVAL`**: The time in seconds that the device stays in deep sleep between rotating local cached screens offline (e.g. `300` seconds = 5 minutes).
+*   **`REFRESH_PADDING`**: The grace period in seconds added to the hard refresh window calculations to accommodate network latency when connecting to Wi-Fi, and to prevent time desynchronization issues if the server has not yet completed its default cycle interval when the device wakes up to sync.
+
 *Note: Any changes made to `config.json` on the host will be dynamically reloaded by the proxy server immediately, without needing to restart the container!*
 
 ### 3. Start the Proxy Container
@@ -53,7 +57,7 @@ docker compose logs -f trmnl-loop
 
 ## Part B — Compile & Flash the Firmware
 
-You can flash the Seeed Studio board using either your browser (via Docker compilation) or locally on your computer using the Arduino IDE.
+You can flash the board using either your browser (via Docker compilation) or locally on your computer using the Arduino IDE.
 
 > [!WARNING]
 > **Flash Cleanup Required:** When switching between compilation environments, or recovering from bootloops, you **must** perform a full flash erase before programming the chip. This wipes corrupted filesystem partitions and ensures the new LittleFS partition formats cleanly.
@@ -80,8 +84,8 @@ curl -H "Cache-Control: no-cache" -o ~/Downloads/firmware.bin http://<server_ip>
 ```
 
 #### 3. Program via Web Flasher
-1. Connect the XIAO ESP32-S3 board to your computer using a USB-C data cable.
-2. Put the board in **bootloader mode**: Hold the **BOOT** button ("B"), click the **RESET** button ("R") once, then release **BOOT**.
+1. Connect your ESP32-S3 board (such as the Seeed Studio XIAO ESP32-S3, official TRMNL board, or other compatible ESP32-S3 board) to your computer using a USB-C data cable.
+2. Put the board in **bootloader mode** (typically by holding the **BOOT** button, clicking the **RESET** button once, then releasing **BOOT**).
 3. Open Google Chrome or Microsoft Edge and go to: **[espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/)**.
 4. Click **Connect**, select the serial port corresponding to your board, and click **Erase Flash** (wipes the chip clean).
 5. Click the **`+` (Add File)** button to configure **1 row** in the flasher:
@@ -100,7 +104,7 @@ Use this option if you prefer compiling and flashing natively using the Arduino 
     *   `ArduinoJson` (by Benoit Blanchon, v6 or v7)
 4.  Open `custom_trmnl_firmware/custom_trmnl_firmware.ino` in the IDE.
 5.  Set your board settings:
-    *   **Board:** Seeed Studio XIAO ESP32S3
+    *   **Board:** Select your specific ESP32-S3 board (e.g. `Seeed Studio XIAO ESP32S3` for the DIY Kit, or the corresponding board definition for your hardware).
     *   **PSRAM:** OPI PSRAM (Required for the 8MB PSRAM Sense/standard kit variant)
     *   **Flash Mode:** QIO
     *   **Partition Scheme:** Default 8MB
@@ -117,7 +121,7 @@ On the first boot after erasing the flash, the device will initialize and launch
 3.  Enter your home network credentials:
     *   **WiFi SSID:** Your home network name.
     *   **WiFi Password:** Your home network password.
-    *   **Proxy URL:** Enter your Python proxy server address:
+    *   **Proxy URL:** Enter your trmnl-loop server address:
         ```text
         http://192.168.1.100:5000
         ```
