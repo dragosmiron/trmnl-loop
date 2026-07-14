@@ -98,17 +98,26 @@ curl -H "Cache-Control: no-cache" -o ~/Downloads/firmware.bin http://<server_ip>
 Use this option if you prefer compiling and flashing natively using the Arduino IDE.
 
 1.  Open the **Arduino IDE**.
-2.  Go to **Tools > Board > Boards Manager** and install the `esp32` package by Espressif Systems.
-3.  Go to the **Library Manager** (left panel) and install:
+2.  Go to **Arduino > Settings** (or **File > Preferences** on Windows/Linux) and add the following to the **Additional Boards Manager URLs**:
+    ```text
+    https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    ```
+3.  Go to **Tools > Board > Boards Manager** and install the `esp32` package by Espressif Systems.
+4.  Go to the **Library Manager** (left panel) and install:
     *   `bb_epaper` (by Larry Bank)
     *   `ArduinoJson` (by Benoit Blanchon, v6 or v7)
-4.  Open `custom_trmnl_firmware/custom_trmnl_firmware.ino` in the IDE.
-5.  Set your board settings:
-    *   **Board:** Select your specific ESP32-S3 board (e.g. `Seeed Studio XIAO ESP32S3` for the DIY Kit, or the corresponding board definition for your hardware).
+    *   `WiFiManager` (by tzapu)
+    *   `WebSockets` (by Markus Sattler)
+5.  In the `custom_trmnl_firmware` directory, create a `config.json` file. You can use the provided `config.example.json` as a template:
+    *   `trmnl_server_url`: The address of your `trmnl-loop` proxy server (e.g., `http://192.168.1.100:8000`).
+6.  Connect your ESP32-S3 board to your computer via USB.
+7.  Select the correct board from **Tools > Board** (e.g., "XIAO_ESP32S3").
+8.  Select the correct COM port from **Tools > Port**.
+9.  Configure board settings:
     *   **PSRAM:** OPI PSRAM (Required for the 8MB PSRAM Sense/standard kit variant)
     *   **Flash Mode:** QIO
     *   **Partition Scheme:** Default 8MB
-6.  Connect your board to your computer, put it in **bootloader mode** (Hold BOOT ➡️ Click RESET ➡️ Release BOOT), select your port under **Tools > Port**, and click **Upload**.
+10. Click **Upload**.
 
 ---
 

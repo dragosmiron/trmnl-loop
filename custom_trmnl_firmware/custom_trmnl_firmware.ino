@@ -5,26 +5,26 @@
 #include <Preferences.h>
 #include <DNSServer.h>
 #include <WebServer.h>
-#include <ArduinoJson.h> // Make sure ArduinoJson library is installed in Arduino IDE
+#include <ArduinoJson.h>  // Make sure ArduinoJson library is installed in Arduino IDE
 #include "bb_epaper.h"
 
 #if defined(BOARD_TRMNL_OG)
 // Screen pins for the official TRMNL OG Board
-#define EPD_SCK_PIN  7
+#define EPD_SCK_PIN 7
 #define EPD_MOSI_PIN 8
-#define EPD_CS_PIN   6
-#define EPD_RST_PIN  10
-#define EPD_DC_PIN   5
+#define EPD_CS_PIN 6
+#define EPD_RST_PIN 10
+#define EPD_DC_PIN 5
 #define EPD_BUSY_PIN 4
-#define BOOT_BUTTON_PIN 0 // Modify if official TRMNL uses a different pin
+#define BOOT_BUTTON_PIN 0  // Modify if official TRMNL uses a different pin
 
 #elif defined(BOARD_SEEED_XIAO_ESP32S3)
 // Screen pins matching the Seeed Studio TRMNL 7.5" OG DIY Kit
-#define EPD_SCK_PIN  7
+#define EPD_SCK_PIN 7
 #define EPD_MOSI_PIN 9
-#define EPD_CS_PIN   44
-#define EPD_RST_PIN  38
-#define EPD_DC_PIN   10
+#define EPD_CS_PIN 44
+#define EPD_RST_PIN 38
+#define EPD_DC_PIN 10
 #define EPD_BUSY_PIN 4
 #define BOOT_BUTTON_PIN 0     // Onboard BOOT button on the XIAO module
 #define EXPANSION_KEY1_PIN 2  // KEY1 on Seeed E-Paper expansion board (D1) - Previous Screen
@@ -33,11 +33,11 @@
 #else
 // Default: Custom Board (Replace with your own pins)
 // These default to the standard TRMNL OG pins but can be overridden
-#define EPD_SCK_PIN  7
+#define EPD_SCK_PIN 7
 #define EPD_MOSI_PIN 8
-#define EPD_CS_PIN   6
-#define EPD_RST_PIN  10
-#define EPD_DC_PIN   5
+#define EPD_CS_PIN 6
+#define EPD_RST_PIN 10
+#define EPD_DC_PIN 5
 #define EPD_BUSY_PIN 4
 #define BOOT_BUTTON_PIN 0
 #endif
@@ -45,7 +45,7 @@
 // Screen dimensions
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 480
-#define SCREEN_BUFFER_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 8) // Exactly 48,000 bytes
+#define SCREEN_BUFFER_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 8)  // Exactly 48,000 bytes
 
 // System Constants
 #define MAX_SCREENS 16
@@ -56,10 +56,10 @@
 BBEPAPER bbep(EP75_800x480);
 
 // RTC Variables (Survive deep sleep)
-RTC_DATA_ATTR int wake_counter = 0;       // Current step in the rotation cycle
-RTC_DATA_ATTR int current_screen_idx = 0; // Index of the screen to draw next
-RTC_DATA_ATTR int total_screens = 0;      // Number of screens downloaded in last sync
-RTC_DATA_ATTR int frame_size = 48000;     // Size of each screen frame in bytes (1bit=48k, 3color=96k)
+RTC_DATA_ATTR int wake_counter = 0;        // Current step in the rotation cycle
+RTC_DATA_ATTR int current_screen_idx = 0;  // Index of the screen to draw next
+RTC_DATA_ATTR int total_screens = 0;       // Number of screens downloaded in last sync
+RTC_DATA_ATTR int frame_size = 48000;      // Size of each screen frame in bytes (1bit=48k, 3color=96k)
 
 // Setup configurations stored in NVS Preferences
 Preferences prefs;
@@ -67,9 +67,9 @@ String wifi_ssid = "";
 String wifi_pass = "";
 String server_url = "";
 String api_token = "";
-int cycle_interval = 300; // Default: cycle every 5 minutes
-int hard_refresh = 1800;  // Default: sync every 30 minutes
-int maximum_compatibility = 0; // 1 = force full refresh every screen change
+int cycle_interval = 300;       // Default: cycle every 5 minutes
+int hard_refresh = 1800;        // Default: sync every 30 minutes
+int maximum_compatibility = 0;  // 1 = force full refresh every screen change
 
 // Web server for the Captive Portal setup
 WebServer server(80);
@@ -96,7 +96,7 @@ void setup() {
 #if defined(EXPANSION_KEY3_PIN)
   pinMode(EXPANSION_KEY3_PIN, INPUT_PULLUP);
 #endif
-  
+
   // Initialize file system
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS Mount Failed");
@@ -195,7 +195,7 @@ void setup() {
   if (total_screens > 0) {
     Serial.printf("Drawing screen index: %d / %d (Manual: %d)\n", current_screen_idx, total_screens, is_manual);
     drawScreen(current_screen_idx, is_reset, is_sync, is_manual);
-    
+
     // Increment rotation steps
     current_screen_idx = (current_screen_idx + 1) % total_screens;
     if (!is_manual) {
@@ -214,7 +214,7 @@ void setup() {
     }
     Serial.printf("Single screen cached. Sleeping for remaining sync window: %d seconds...\n", sleep_time);
     esp_sleep_enable_timer_wakeup(sleep_time * 1000000ULL);
-    
+
     // Set wake_counter so that needSync evaluates to true on the next natural wakeup
     wake_counter = (hard_refresh / cycle_interval) + 1;
   } else {
@@ -263,7 +263,7 @@ void saveSettings(String ssid, String pass, String server, String token) {
 bool connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifi_ssid.c_str(), wifi_pass.c_str());
-  
+
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < WIFI_RETRY_LIMIT) {
     delay(500);
@@ -278,15 +278,15 @@ bool fetchBatchFromProxy() {
   HTTPClient http;
   String fetchUrl = server_url + "/api/display";
   http.begin(fetchUrl);
-  http.setTimeout(HTTP_TIMEOUT_MS); // Timeout for batch processing
-  
+  http.setTimeout(HTTP_TIMEOUT_MS);  // Timeout for batch processing
+
   // Copy native headers to authenticate with the proxy
   http.addHeader("Access-Token", api_token);
   http.addHeader("ID", getMacAddress());
   http.addHeader("User-Agent", "ESP32HTTPClient");
 
   // Collect response headers
-  const char* headerKeys[] = {"X-Batch-Count", "X-Cycle-Interval", "X-Hard-Refresh", "X-Max-Compatibility", "X-Frame-Size", "X-Special-Function"};
+  const char* headerKeys[] = { "X-Batch-Count", "X-Cycle-Interval", "X-Hard-Refresh", "X-Max-Compatibility", "X-Frame-Size", "X-Special-Function" };
   http.collectHeaders(headerKeys, 6);
 
   int httpCode = http.GET();
@@ -328,7 +328,7 @@ bool fetchBatchFromProxy() {
         char path[16];
         snprintf(path, sizeof(path), "/s%d.raw", i);
         File file = LittleFS.open(path, "w");
-        
+
         if (!file) {
           Serial.printf("Failed to write to file: %s\n", path);
           http.end();
@@ -350,20 +350,18 @@ bool fetchBatchFromProxy() {
       return true;
     }
   }
-  
+
   String payload = http.getString();
   Serial.printf("HTTP request failed, code: %d\n", httpCode);
 
-  if (httpCode == 401 || httpCode == 404 || 
-      (httpCode == 500 && payload.indexOf("Device not found") >= 0) || 
-      payload.indexOf("\"reset_firmware\": true") >= 0) {
+  if (httpCode == 401 || httpCode == 404 || (httpCode == 500 && payload.indexOf("Device not found") >= 0) || payload.indexOf("\"reset_firmware\": true") >= 0) {
     Serial.println("Device disassociated from server. Wiping credentials and restarting...");
-    saveSettings("", "", "", ""); // Clear SSID/Token
+    saveSettings("", "", "", "");  // Clear SSID/Token
     http.end();
     delay(1000);
     ESP.restart();
   }
-  
+
   http.end();
   return false;
 }
@@ -391,9 +389,9 @@ void drawScreen(int index, bool is_reset, bool is_sync, bool is_manual) {
   bbep.setPanelType(EP75_800x480);
   bbep.initIO(EPD_DC_PIN, EPD_RST_PIN, EPD_BUSY_PIN, EPD_CS_PIN, EPD_MOSI_PIN, EPD_SCK_PIN, 8000000);
   bbep.setBuffer(buffer);
-  
+
   // Set to true to invert colors if screen prints negative
-  bbep.writePlane(PLANE_BOTH, false); 
+  bbep.writePlane(PLANE_BOTH, false);
 
   // Choose refresh mode based on sync, boot, cycle, and manual states
   if (maximum_compatibility == 1 || is_reset) {
@@ -409,19 +407,19 @@ void startCaptivePortal() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP("TRMNL-Batch-Setup");
   dnsServer.start(53, "*", WiFi.softAPIP());
-  
+
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.onNotFound(handleNotFound);
   server.begin();
-  
+
   Serial.print("Connect to WiFi hotspot 'TRMNL-Batch-Setup' and open http://");
   Serial.println(WiFi.softAPIP());
 }
 
 void handleRoot() {
   int n = WiFi.scanNetworks();
-  
+
   String html = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -442,7 +440,7 @@ void handleRoot() {
     <form action='/save' method='post'>
       <label><b>WiFi Network</b></label>
       <input type='text' name='ssid' list='networks' placeholder='Select or type SSID' value=')rawliteral";
-  
+
   html += wifi_ssid;
   html += R"rawliteral(' required>
       <datalist id='networks'>
@@ -476,7 +474,7 @@ void handleSave() {
   String ssid = server.arg("ssid");
   String pass = server.arg("pass");
   String serverUrl = server.arg("server");
-  
+
   if (serverUrl.endsWith("/")) {
     serverUrl.remove(serverUrl.length() - 1);
   }
@@ -484,7 +482,7 @@ void handleSave() {
   // Attempt to connect to WiFi and register with the server
   wifi_ssid = ssid;
   wifi_pass = pass;
-  
+
   server.send(200, "text/html", "<html><body><h3>Saving config & connecting...</h3><p>Checking registration. Keep an eye on Serial output.</p></body></html>");
   delay(1000);
 
