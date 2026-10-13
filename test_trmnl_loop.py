@@ -124,6 +124,22 @@ class TestTrmnlLoop:
             assert response.status_code == 500
             assert "Proxy setup request failed" in response.json["error"]
 
+        @patch("trmnl_loop.get_config")
+        @patch("requests.get")
+        def test_strips_trailing_slash_from_byos_url(self, mock_get, mock_get_config, client):
+            mock_get_config.return_value = {"TRMNL_BYOS_URL": "http://192.168.1.10/"}
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b"success"
+            mock_resp.headers = {}
+            mock_get.return_value = mock_resp
+
+            response = client.get('/api/setup')
+            assert response.status_code == 200
+            mock_get.assert_called_once()
+            called_url = mock_get.call_args[0][0]
+            assert called_url == "http://192.168.1.10/api/setup"
+
     class TestDisplayBatch:
         @patch("trmnl_loop.get_config")
         @patch("requests.get")
@@ -281,6 +297,71 @@ class TestTrmnlLoop:
             assert response.headers.get("X-Max-Compatibility") == "1"
             assert response.headers.get("X-Frame-Size") == "12" # len(b"raw_img0.png")
             assert response.headers.get("X-Special-Function") == "fast_refresh"
+
+        @patch("trmnl_loop.get_config")
+        @patch("requests.get")
+        def test_strips_trailing_slash_from_byos_url(self, mock_get, mock_get_config, client):
+            mock_get_config.return_value = {"TRMNL_BYOS_URL": "http://192.168.1.10/"}
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_resp.content = b"Not Found"
+            mock_resp.headers = {}
+            mock_get.return_value = mock_resp
+
+            client.get('/api/display')
+            called_url = mock_get.call_args[0][0]
+            assert called_url.startswith("http://192.168.1.10/api/display")
+
+        @patch("trmnl_loop.get_config")
+        @patch("requests.get")
+        def test_when_first_screen_returns_http_202_forwards_202_response(self, mock_get, mock_get_config, client):
+            mock_get_config.return_value = {"TRMNL_BYOS_URL": "http://192.168.1.10"}
+            mock_resp = MagicMock()
+            mock_resp.status_code = 202
+            mock_resp.content = b'{"status": 202, "message": "Rendering"}'
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_get.return_value = mock_resp
+
+            response = client.get('/api/display')
+            assert response.status_code == 202
+            assert response.data == b'{"status": 202, "message": "Rendering"}'
+
+        @patch("trmnl_loop.get_config")
+        @patch("requests.get")
+        def test_when_first_screen_json_status_is_202_returns_202_response(self, mock_get, mock_get_config, client):
+            mock_get_config.return_value = {"TRMNL_BYOS_URL": "http://192.168.1.10"}
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"status": 202, "image_url": null}'
+            mock_resp.json.return_value = {"status": 202, "image_url": None}
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_get.return_value = mock_resp
+
+            response = client.get('/api/display')
+            assert response.status_code == 202
+            assert response.data == b'{"status": 202, "image_url": null}'
+
+        @patch("trmnl_loop.get_config")
+        @patch("requests.get")
+        @patch("trmnl_loop.download_and_convert_image")
+        def test_resolves_relative_image_urls(self, mock_convert, mock_get, mock_get_config, client):
+            mock_get_config.return_value = {
+                "TRMNL_BYOS_URL": "http://192.168.1.10",
+                "CYCLE_INTERVAL": 300,
+                "REFRESH_PADDING": 60
+            }
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {
+                "refresh_rate": 300,
+                "image_url": "/storage/images/generated/screen0.png"
+            }
+            mock_get.return_value = resp
+            mock_convert.return_value = b"raw_data"
+
+            response = client.get('/api/display')
+            assert response.status_code == 200
+            mock_convert.assert_called_with("http://192.168.1.10/storage/images/generated/screen0.png", "1bit", 800, 480)
 
     class TestImageConversion:
         @patch("requests.get")

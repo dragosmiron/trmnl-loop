@@ -46,6 +46,7 @@ def setup_proxy():
     byos_url = config.get("TRMNL_BYOS_URL")
     if not byos_url:
         return jsonify({"error": "TRMNL_BYOS_URL is not configured in config.json"}), 500
+    byos_url = byos_url.rstrip('/')
 
     headers = {key: value for key, value in request.headers if key.lower() not in ['host']}
     url = f"{byos_url}/api/setup"
@@ -70,6 +71,7 @@ def display_batch():
     byos_url = config.get("TRMNL_BYOS_URL")
     if not byos_url:
         return jsonify({"error": "TRMNL_BYOS_URL is not configured in config.json"}), 500
+    byos_url = byos_url.rstrip('/')
     cycle_interval = int(config.get("CYCLE_INTERVAL", 300))
     refresh_padding = int(config.get("REFRESH_PADDING", 60))
 
@@ -77,13 +79,25 @@ def display_batch():
     headers = {key: value for key, value in request.headers if key.lower() not in ['host']}
     url = f"{byos_url}/api/display"
     
+    def resolve_image_url(u):
+        if not u:
+            return u
+        if u.startswith('/'):
+            return f"{byos_url}{u}"
+        return u
+
     # 1. Query BYOS server for the first screen to read metadata
     try:
         first_resp = requests.get(f"{url}?step=0", headers=headers, timeout=10)
+        if first_resp.status_code == 202:
+            return Response(first_resp.content, status=202, headers=dict(first_resp.headers))
         if first_resp.status_code != 200:
             return Response(first_resp.content, status=first_resp.status_code, headers=dict(first_resp.headers))
         
         first_json = first_resp.json()
+        if first_json.get("status") == 202:
+            return Response(first_resp.content, status=202, headers=dict(first_resp.headers))
+
         hard_refresh = int(first_json.get("refresh_rate", 1800))  # Default to 30 mins
         maximum_compatibility = first_json.get("maximum_compatibility", False)
     except Exception as e:
@@ -118,7 +132,7 @@ def display_batch():
     
     # 2. Download and convert the first screen image
     try:
-        first_image_url = first_json.get("image_url")
+        first_image_url = resolve_image_url(first_json.get("image_url"))
         logger.info(f"Screen 0 JSON: {first_json}")
         if first_image_url:
             first_raw = download_and_convert_image(first_image_url, img_format, width, height)
@@ -138,7 +152,7 @@ def display_batch():
             if resp.status_code == 200:
                 js = resp.json()
                 logger.info(f"Screen {i} JSON: {js}")
-                img_url = js.get("image_url")
+                img_url = resolve_image_url(js.get("image_url"))
                 if img_url:
                     raw_data = download_and_convert_image(img_url, img_format, width, height)
                     img_hash = hashlib.sha256(raw_data).hexdigest()
